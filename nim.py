@@ -1,4 +1,5 @@
 import random
+import time
 from typing import Self
 
 
@@ -12,7 +13,7 @@ class Nim():
         self.winner = None
     
     def switch_player(self):
-        return self.other_player(self.player)
+        return Nim.other_player(self.player)
     
     @classmethod
     def other_player(cls,player):
@@ -20,19 +21,20 @@ class Nim():
     
     @classmethod 
     def available_action(cls, pile):
-        
         actions = set()
-        
-        for p in range(len(pile)):
-            
-            for i in range(1,pile[p] + 1):
-                
-                actions.add((p,i))
+        for i, pile in enumerate(pile):
+            for j in range(1, pile + 1):
+                actions.add((i, j))
         return actions
-    
+
+
     def move(self, action):
         
         pile, count = action
+
+        if self.winner is not None:
+            print("Winner : ", self.winner)
+            raise Exception("Game already won")
         
         if pile < 0 or pile >= len(self.pile):
             raise("Invalid pile")
@@ -40,13 +42,11 @@ class Nim():
         if count < 1 or count > self.pile[pile]:
             raise("Invalid count")
         
-        if self.winner:
-            raise("Game is already over")
 
-        self.pile[pile] -= count
-        
-        self.switch_player()
-        
+        self.pile[pile] -= count 
+        # print("player: ", self.player)
+        self.player = self.switch_player()
+        # print("Other: ", self.player)
         if all(pile == 0 for pile in self.pile):
             self.winner = self.player
       
@@ -54,7 +54,7 @@ class NimAI():
     
     def __init__(self, alpha = 0.5, epsilon = 0.1):
         """ alpha: learning rate
-            epsilon: future reward value rate
+            epsilon: exploration rate 
         """
         
         self.q = {}
@@ -62,8 +62,10 @@ class NimAI():
         self.epsilon = epsilon
     
     def update(self, old_state, action, new_state, reward):
-            
-       pass
+        
+        old = self.get_q_value(old_state,action)
+        best_future = self.best_future_reward(new_state)
+        self.update_q_value(old_state,action, old , reward, best_future)
     def get_q_value(self, state, action):
         
         if (tuple(state), action) not in self.q:
@@ -87,17 +89,18 @@ class NimAI():
                 maxReward = self.q[key] if self.q[key] > maxReward else maxReward
                 
         return maxReward
+
     def choose_action(self,state, epsilon = False):
         
         available_action = Nim.available_action(state)
         if not available_action:
-            raise "No available actions"
+            return 0,0
         
         if epsilon and random.random() < self.epsilon:
-               return random.choice(list(Nim.available_action(state)))
+               return random.choice(list(available_action))
             
         bestFutureReward = self.best_future_reward(state)
-        for action in Nim.available_action(state):
+        for action in available_action:
             
             key = tuple(state),action
             if key in self.q and self.get_q_value(state,action) == bestFutureReward:
@@ -109,28 +112,34 @@ def train(n):
     
     player = NimAI()
 
+    # Play n games
     for i in range(n):
-        
         print(f"Playing training game {i + 1}")
         game = Nim()
 
+        # Keep track of last move made by either player
         last = {
             0: {"state": None, "action": None},
             1: {"state": None, "action": None}
         }
-        
-        while True:
-            
-            state = game.pile.copy()
-            action = player.choose_action(state, player)
 
+        # Game loop
+        while True:
+
+            # Keep track of current state and action
+            state = game.pile.copy()
+            action = player.choose_action(game.pile)
+
+            # Keep track of last state and action
             last[game.player]["state"] = state
             last[game.player]["action"] = action
-            
+
+            # Make move
             game.move(action)
             new_state = game.pile.copy()
+
             # When game is over, update Q values with rewards
-            if game.winner:
+            if game.winner is not None:
                 player.update(state, action, new_state, -1)
                 player.update(
                     last[game.player]["state"],
@@ -156,7 +165,7 @@ def train(n):
 
 
 def play(ai, human_player=None):
-
+    
     # If no player order set, choose human's order randomly
     if human_player is None:
         human_player = random.randint(0, 1)
@@ -170,12 +179,12 @@ def play(ai, human_player=None):
         # Print contents of piles
         print()
         print("Piles:")
-        for i, pile in enumerate(game.piles):
+        for i, pile in enumerate(game.pile):
             print(f"Pile {i}: {pile}")
         print()
 
         # Compute available actions
-        available_actions = Nim.available_actions(game.piles)
+        available_actions = Nim.available_action(game.pile)
         time.sleep(1)
 
         # Let human make a move
@@ -191,7 +200,7 @@ def play(ai, human_player=None):
         # Have AI make a move
         else:
             print("AI's Turn")
-            pile, count = ai.choose_action(game.piles, epsilon=False)
+            pile, count = ai.choose_action(game.pile, epsilon=False)
             print(f"AI chose to take {count} from pile {pile}.")
 
         # Make move
